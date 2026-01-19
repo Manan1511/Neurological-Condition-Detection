@@ -66,7 +66,7 @@ def generate_voluntary_segment():
         'AccelX': acc_x, 'AccelY': acc_y, 'AccelZ': acc_z,
         'GyroX': 0, 'GyroY': 0, 'GyroZ': 0,
         'FSR': fsr,
-        'Label': 1 
+        'Label': 2 
     })
     return df
 
@@ -87,7 +87,7 @@ def generate_rest_segment():
         'AccelX': acc_x, 'AccelY': acc_y, 'AccelZ': acc_z,
         'GyroX': 0, 'GyroY': 0, 'GyroZ': 0,
         'FSR': fsr,
-        'Label': 1 
+        'Label': 0 
     })
     return df
 

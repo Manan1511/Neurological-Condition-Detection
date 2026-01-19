@@ -105,9 +105,9 @@ def run_live_detection():
                     
                     # --- DISPLAY RESULTS ---
                     # We use carriage return '\r' to overwrite the same line (animation effect)
-                    if prediction == '1': # Tremor
+                    if prediction == 1: # Tremor
                         status = "⚠️  TREMOR DETECTED! (4-6Hz)"
-                    elif prediction == '2': # Voluntary
+                    elif prediction == 2: # Voluntary
                         status = "✋  Voluntary Movement"
                     else:
                         status = "✅  Rest / Static"
