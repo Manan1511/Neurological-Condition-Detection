@@ -116,19 +116,33 @@ def run_live_detection():
                     features = get_features(df_window)
                     
                     # Predict (Reshape because model expects a list of rows)
+                    # Predict
                     prediction = model.predict([features])[0]
                     
+                    # --- THE FIX: FREQUENCY LOGIC GATE ---
+                    # Feature 0 is the Dominant Frequency calculated by FFT
+                    real_freq = features[0] 
+                    
+                    # Rule 1: Parkinson's is strictly 3.0 - 7.0 Hz. 
+                    # If it's 10.5 Hz, it's likely Voluntary or Nervous Jitter.
+                    if prediction == 1: # If AI thinks it's a tremor...
+                        if real_freq > 7.0: 
+                            prediction = 2 # Force override to VOLUNTARY
+                            # Optional debug print
+                            # print(f" [Override] {real_freq:.1f}Hz is too fast for Parkinson's")
+                        elif real_freq < 3.0:
+                            prediction = 2 # Force override (Too slow)
+
                     # --- DISPLAY RESULTS ---
-                    # We use carriage return '\r' to overwrite the same line (animation effect)
-                    if prediction == 1: # Tremor
+                    if prediction == 1: 
                         status = "⚠️  TREMOR DETECTED! (4-6Hz)"
-                    elif prediction == 2: # Voluntary
+                    elif prediction == 2: 
                         status = "✋  Voluntary Movement"
                     else:
                         status = "✅  Rest / Static"
 
                     # Print formatted output
-                    print(f"\rStatus: {status: <30} | Freq: {features[0]:.1f}Hz | FSR: {features[4]:.0f}", end="")
+                    print(f"\rStatus: {status: <30} | Freq: {real_freq:.1f}Hz | FSR: {features[4]:.0f}", end="")
 
         except KeyboardInterrupt:
             print("\n\nStopping...")
