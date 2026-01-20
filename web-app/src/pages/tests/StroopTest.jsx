@@ -48,12 +48,13 @@ const StroopTest = () => {
     };
 
     const nextTrial = useCallback(() => {
+        setFeedback(null); // Clear feedback immediately
+
         if (completedTrials >= TOTAL_TRIALS) {
             setGameState('results');
             return;
         }
 
-        setFeedback(null);
         // Random Inter-Stimulus Interval (ISI) 500-1500ms
         const delay = 500 + Math.random() * 1000;
 
@@ -164,6 +165,12 @@ const StroopTest = () => {
                                 <Button onClick={startTest} className="w-48 text-lg">
                                     <Play className="w-5 h-5 mr-2" /> Start Test
                                 </Button>
+                            </div>
+                        )}
+
+                        {gameState === 'test' && stimulus && (
+                            <div className="absolute top-4 right-4 text-gray-400 font-mono text-sm">
+                                Trial {completedTrials + 1} / {TOTAL_TRIALS}
                             </div>
                         )}
 

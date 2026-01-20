@@ -1,7 +1,7 @@
 import React from 'react';
 import Layout from '../components/common/Layout';
 import Card from '../components/common/Card';
-import { Mic, Activity, Brain, Info, ArrowRight } from 'lucide-react';
+import { Mic, Activity, Brain, Info, ArrowRight, Puzzle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const Dashboard = () => {
@@ -31,7 +31,7 @@ const Dashboard = () => {
             title: "Stroop Interference",
             desc: "Measure cognitive flexibility and inhibition.",
             path: "/cognitive-test",
-            icon: Brain,
+            icon: Puzzle,
             color: "bg-red-50 text-red-600"
         },
         {

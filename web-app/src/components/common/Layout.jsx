@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Activity, Mic, Brain, Info, Menu, X } from 'lucide-react';
+import { Home, Activity, Mic, Brain, Info, Menu, X, Puzzle } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 const Layout = ({ children }) => {
@@ -16,6 +16,7 @@ const Layout = ({ children }) => {
         { name: 'Vocal Test', path: '/vocal-test', icon: Mic },
         { name: 'Tap Test', path: '/tap-test', icon: Activity },
         { name: 'Dual Task', path: '/dual-task', icon: Brain },
+        { name: 'Stroop', path: '/cognitive-test', icon: Puzzle },
         { name: 'Lifestyle', path: '/lifestyle', icon: Info },
     ];
 
