@@ -2,18 +2,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from '../../components/common/Layout';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
-import { Brain, CheckCircle, AlertTriangle, RotateCcw } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { Brain, CheckCircle, AlertTriangle, RotateCcw, Play } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 
 const StroopTest = () => {
     const [gameState, setGameState] = useState('intro'); // intro, test, results
-    const [currentTrial, setCurrentTrial] = useState(0);
     const [stimulus, setStimulus] = useState(null);
     const [feedback, setFeedback] = useState(null);
-    const [results, setResults] = useState({ congruent: [], incongruent: [] });
+    const [results, setResults] = useState({ neutral: [], incongruent: [] });
+    const [completedTrials, setCompletedTrials] = useState(0);
 
     // Configuration
-    const TOTAL_TRIALS = 20;
+    const TOTAL_TRIALS = 20; // 10 Neutral, 10 Incongruent
     const COLORS = [
         { name: 'RED', hex: '#EF4444', key: 'r' },
         { name: 'GREEN', hex: '#22C55E', key: 'g' },
@@ -24,47 +24,55 @@ const StroopTest = () => {
     const startTimeRef = useRef(null);
     const timeoutRef = useRef(null);
 
-    const generateStimulus = () => {
-        const wordObj = COLORS[Math.floor(Math.random() * COLORS.length)];
-        const isCongruent = Math.random() > 0.5;
-        let colorObj;
+    // --- LOGIC ---
 
-        if (isCongruent) {
-            colorObj = wordObj;
+    const generateStimulus = () => {
+        const type = Math.random() > 0.5 ? 'neutral' : 'incongruent';
+        const colorObj = COLORS[Math.floor(Math.random() * COLORS.length)];
+
+        let word = '';
+        if (type === 'neutral') {
+            word = 'XXXX'; // Neutral stimulus (measure motor/color speed only)
         } else {
-            const otherColors = COLORS.filter(c => c.name !== wordObj.name);
-            colorObj = otherColors[Math.floor(Math.random() * otherColors.length)];
+            // Incongruent: Word is a color name DIFFERENT from the ink color
+            const otherColors = COLORS.filter(c => c.name !== colorObj.name);
+            word = otherColors[Math.floor(Math.random() * otherColors.length)].name;
         }
 
         return {
-            word: wordObj.name,
+            word: word,
             color: colorObj.hex,
             colorName: colorObj.name,
-            type: isCongruent ? 'congruent' : 'incongruent'
+            type: type
         };
     };
 
     const nextTrial = useCallback(() => {
-        if (currentTrial >= TOTAL_TRIALS) {
+        if (completedTrials >= TOTAL_TRIALS) {
             setGameState('results');
             return;
         }
+
         setFeedback(null);
+        // Random Inter-Stimulus Interval (ISI) 500-1500ms
         const delay = 500 + Math.random() * 1000;
+
         timeoutRef.current = setTimeout(() => {
             const newStimulus = generateStimulus();
             setStimulus(newStimulus);
             startTimeRef.current = Date.now();
         }, delay);
-    }, [currentTrial]);
+
+    }, [completedTrials]);
 
     const handleInput = useCallback((e) => {
         if (gameState !== 'test' || !stimulus) return;
-        const pressedKey = e.key.toLowerCase();
-        const targetKey = COLORS.find(c => c.name === stimulus.colorName).key;
 
+        const pressedKey = e.key.toLowerCase();
+        // Valid keys only
         if (!['r', 'g', 'b', 'y'].includes(pressedKey)) return;
 
+        const targetKey = COLORS.find(c => c.name === stimulus.colorName).key;
         const reactionTime = Date.now() - startTimeRef.current;
         const isCorrect = pressedKey === targetKey;
 
@@ -76,13 +84,18 @@ const StroopTest = () => {
             setFeedback('Correct');
         } else {
             setFeedback('Miss');
+            // We penalize errors by not recording the time (or adding a penalty in real clinical settings)
         }
 
         setStimulus(null);
-        setCurrentTrial(prev => prev + 1);
-        setTimeout(nextTrial, 500);
-    }, [gameState, stimulus, nextTrial]);
+        setCompletedTrials(prev => prev + 1);
 
+        // Short feedback pause
+        setTimeout(nextTrial, 300);
+
+    }, [gameState, stimulus, nextTrial, completedTrials]);
+
+    // Keyboard Listener
     useEffect(() => {
         window.addEventListener('keydown', handleInput);
         return () => window.removeEventListener('keydown', handleInput);
@@ -93,40 +106,53 @@ const StroopTest = () => {
     }, []);
 
     const startTest = () => {
-        setResults({ congruent: [], incongruent: [] });
-        setCurrentTrial(0);
+        setResults({ neutral: [], incongruent: [] });
+        setCompletedTrials(0);
         setGameState('test');
         nextTrial();
     };
 
+    // --- SCORING (Interference) ---
     const getAverage = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const avgCongruent = getAverage(results.congruent);
+
+    // CW (Color-Word / Incongruent) Time
     const avgIncongruent = getAverage(results.incongruent);
-    const interference = avgIncongruent - avgCongruent;
-    const status = interference > 250 ? "High Cognitive Load" : "Normal Range";
+    // C (Color / Neutral) Time - serves as the "Predicted" baseline for motor speed
+    const avgNeutral = getAverage(results.neutral);
+
+    // Interference Score = CW - C
+    // Positive score means Incongruent took longer (Normal Stroop Effect).
+    // excessively high score (>300ms) indicates cognitive rigidity (PD risk).
+    const interferenceScore = avgIncongruent - avgNeutral;
 
     const chartData = [
-        { name: 'Congruent', time: Math.round(avgCongruent), fill: '#22C55E' },
-        { name: 'Incongruent', time: Math.round(avgIncongruent), fill: '#EF4444' }
+        { name: 'Neutral (Baseline)', time: Math.round(avgNeutral), fill: '#9CA3AF' },
+        { name: 'Incongruent (Conflict)', time: Math.round(avgIncongruent), fill: '#EF4444' }
     ];
 
     return (
         <Layout>
             <div className="max-w-4xl mx-auto space-y-8">
                 <header className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-park-navy mb-4">Cognitive Inhibition Test</h1>
-                    <p className="text-xl text-gray-600">Based on the Stroop Effect.</p>
+                    <h1 className="text-4xl font-bold text-park-navy mb-4">Stroop Interference Test</h1>
+                    <p className="text-xl text-gray-600">
+                        Measures <span className="font-bold text-park-sage">Cognitive Inhibition</span>.
+                    </p>
                 </header>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <Card title="Instructions">
-                        <div className="space-y-4 text-gray-700">
-                            <p>Press the key for the <b>INK COLOR</b>, not the word.</p>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="p-2 bg-red-100 rounded text-center"><b>R</b> for Red</div>
-                                <div className="p-2 bg-green-100 rounded text-center"><b>G</b> for Green</div>
-                                <div className="p-2 bg-blue-100 rounded text-center"><b>B</b> for Blue</div>
-                                <div className="p-2 bg-yellow-100 rounded text-center"><b>Y</b> for Yellow</div>
+                    <Card title="Instructions" className="h-full">
+                        <div className="space-y-4 text-gray-700 text-lg">
+                            <p>Identify the <span className="font-bold underline">INK COLOR</span> of the text shown.</p>
+                            <ul className="list-disc pl-5 space-y-2">
+                                <li>If you see <span className="font-bold text-red-500">XXXX</span>, press <b>R</b> (Red).</li>
+                                <li>If you see <span className="font-bold text-blue-500">RED</span>, press <b>B</b> (Blue).</li>
+                            </ul>
+                            <div className="grid grid-cols-4 gap-2 mt-6">
+                                <div className="p-3 bg-red-100 rounded text-center border-2 border-red-200"><b>R</b><br /><span className="text-xs">Red</span></div>
+                                <div className="p-3 bg-green-100 rounded text-center border-2 border-green-200"><b>G</b><br /><span className="text-xs">Green</span></div>
+                                <div className="p-3 bg-blue-100 rounded text-center border-2 border-blue-200"><b>B</b><br /><span className="text-xs">Blue</span></div>
+                                <div className="p-3 bg-yellow-100 rounded text-center border-2 border-yellow-200"><b>Y</b><br /><span className="text-xs">Yell</span></div>
                             </div>
                         </div>
                     </Card>
@@ -134,45 +160,63 @@ const StroopTest = () => {
                     <Card className="flex flex-col items-center justify-center min-h-[400px] bg-gray-50 relative">
                         {gameState === 'intro' && (
                             <div className="text-center">
-                                <Brain className="w-16 h-16 text-park-sage mx-auto mb-4" />
-                                <Button onClick={startTest}>Start Test</Button>
+                                <Brain className="w-20 h-20 text-park-sage mx-auto mb-6" />
+                                <Button onClick={startTest} className="w-48 text-lg">
+                                    <Play className="w-5 h-5 mr-2" /> Start Test
+                                </Button>
                             </div>
                         )}
-                        {gameState === 'test' && (
-                            <div className="absolute top-6 right-6 flex flex-col items-end">
-                                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Trial</span>
-                                <span className="text-3xl font-black text-park-sage">{currentTrial + 1}<span className="text-gray-300 text-lg">/{TOTAL_TRIALS}</span></span>
-                            </div>
-                        )}
+
                         {gameState === 'test' && stimulus && (
-                            <div className="text-8xl font-black mb-12 select-none" style={{ color: stimulus.color }}>
-                                {stimulus.word}
-                            </div>
-                        )}
-                        {feedback && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                                {feedback === 'Correct' ? <CheckCircle className="w-20 text-green-500" /> : <AlertTriangle className="w-20 text-red-500" />}
-                            </div>
-                        )}
-                        {gameState === 'results' && (
-                            <div className="text-center w-full">
-                                <h3 className="text-gray-500 uppercase">Interference Cost</h3>
-                                <div className={`text-6xl font-black mb-6 ${interference > 250 ? 'text-red-500' : 'text-green-600'}`}>
-                                    {Math.round(interference)} <span className="text-3xl text-gray-400 font-medium">ms</span>
+                            <div className="animate-in fade-in zoom-in duration-200">
+                                <div
+                                    className="text-7xl font-black mb-12 select-none tracking-wider"
+                                    style={{ color: stimulus.color }}
+                                >
+                                    {stimulus.word}
                                 </div>
-                                <p className="mb-4">{status}</p>
-                                <div className="h-48 w-full">
+                            </div>
+                        )}
+
+                        {/* Visual Feedback Overlay */}
+                        {feedback && (
+                            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                                {feedback === 'Correct' ? (
+                                    <CheckCircle className="w-24 h-24 text-green-500 animate-bounce" />
+                                ) : (
+                                    <AlertTriangle className="w-24 h-24 text-red-500 animate-pulse" />
+                                )}
+                            </div>
+                        )}
+
+                        {gameState === 'results' && (
+                            <div className="text-center w-full animate-in slide-in-from-bottom">
+                                <h3 className="text-gray-500 uppercase tracking-widest text-sm font-bold mb-2">Interference Score</h3>
+                                <div className={`text-6xl font-bold mb-2 ${interferenceScore > 300 ? 'text-red-500' : 'text-park-sage'}`}>
+                                    {Math.round(interferenceScore)} <span className="text-2xl text-gray-400">ms</span>
+                                </div>
+                                <p className="text-gray-500 mb-6 text-sm">
+                                    (Difference between Conflict and Baseline)
+                                </p>
+
+                                <div className="h-48 w-full mb-6">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={chartData}>
-                                            <XAxis dataKey="name" hide />
-                                            <Tooltip />
-                                            <Bar dataKey="time">
-                                                {chartData.map((e, i) => <Cell key={i} fill={e.fill} />)}
+                                        <BarChart data={chartData} layout="vertical">
+                                            <XAxis type="number" hide />
+                                            <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12 }} />
+                                            <Tooltip cursor={{ fill: 'transparent' }} />
+                                            <Bar dataKey="time" radius={[0, 4, 4, 0]} barSize={40}>
+                                                {chartData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                                                ))}
                                             </Bar>
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
-                                <Button onClick={() => setGameState('intro')} variant="outline"><RotateCcw className="mr-2 h-4 w-4" /> Retry</Button>
+
+                                <Button onClick={() => setGameState('intro')} variant="outline">
+                                    <RotateCcw className="w-4 h-4 mr-2" /> Retry Test
+                                </Button>
                             </div>
                         )}
                     </Card>
@@ -181,4 +225,5 @@ const StroopTest = () => {
         </Layout>
     );
 };
+
 export default StroopTest;
