@@ -1,8 +1,8 @@
 import numpy as np
-import pandas as pd
 import librosa
 import joblib
-from datasets import load_dataset, Audio
+import soundfile as sf
+from datasets import load_dataset
 from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -11,148 +11,121 @@ from sklearn.metrics import classification_report, accuracy_score
 # --- CONFIGURATION ---
 MODEL_FILE = 'speech_svm_model.pkl'
 SCALER_FILE = 'speech_scaler.pkl'
-TARGET_SAMPLING_RATE = 16000 # Standardize all audio to 16kHz
-MAX_SAMPLES_PER_CLASS = 150  # Limit samples to speed up training
+TARGET_SAMPLING_RATE = 16000
+MAX_SAMPLES = 800  # Increased for better accuracy
+
+def inject_tremor(audio, sr):
+    """
+    Synthetically adds Parkinson's-style tremor (3-12Hz) to healthy audio.
+    """
+    tremor_freq = np.random.uniform(3.0, 10.0)  # Tremor speed
+    am_depth = np.random.uniform(0.2, 0.6)      # Amplitude wobble
+
+    t = np.linspace(0, len(audio)/sr, len(audio))
+    
+    # Amplitude Modulation (Shimmer effect)
+    am_envelope = 1.0 + (am_depth * np.sin(2 * np.pi * tremor_freq * t))
+    audio_am = audio * am_envelope
+    return audio_am
 
 def extract_features(audio_array, sample_rate):
-    """
-    Extracts Jitter, Shimmer, HNR, and MFCC from raw audio.
-    """
     if len(audio_array) == 0: return None
     
-    # 1. MFCC (Timbre/Spectral Envelope)
+    # 1. MFCC
     mfcc = np.mean(librosa.feature.mfcc(y=audio_array, sr=sample_rate, n_mfcc=13))
     
-    # 2. Pitch (F0) Extraction for Jitter/Shimmer
-    # We use pyin for robust pitch tracking
-    f0, voiced_flag, voiced_probs = librosa.pyin(audio_array, fmin=75, fmax=300, sr=sample_rate)
-    f0 = f0[~np.isnan(f0)] # Remove NaNs
-
-    if len(f0) < 2: 
-        return None # Not enough tonal audio to analyze
+    # 2. Pitch (F0)
+    try:
+        f0, _, _ = librosa.pyin(audio_array, fmin=75, fmax=300, sr=sample_rate)
+    except:
+        return None
+        
+    f0 = f0[~np.isnan(f0)]
+    if len(f0) < 5: return None 
     
-    # 3. Jitter (Frequency Instability)
+    # 3. Jitter
     periods = 1.0 / f0
-    jitter = np.mean(np.abs(np.diff(periods))) / np.mean(periods) * 100 # %
+    jitter = np.mean(np.abs(np.diff(periods))) / np.mean(periods) * 100 
     
-    # 4. Shimmer (Amplitude Instability)
-    # Calculate RMS amplitude per frame
-    hop_length = 512
-    rms = librosa.feature.rms(y=audio_array, frame_length=1024, hop_length=hop_length)[0]
-    
-    # Resize RMS to match F0 length (roughly) for calculation
-    target_len = min(len(rms), len(f0))
-    rms = rms[:target_len]
-    
-    if len(rms) < 2: return None
-    
-    shimmer = np.mean(np.abs(np.diff(rms))) / np.mean(rms) * 100 # %
-    
-    # 5. HNR (Harmonics to Noise Ratio)
+    # 4. Shimmer
+    rms = librosa.feature.rms(y=audio_array)[0]
+    min_len = min(len(rms), len(f0))
+    rms = rms[:min_len]
+    shimmer = np.mean(np.abs(np.diff(rms))) / np.mean(rms) * 100 
+
+    # 5. HNR
     harmonic = librosa.effects.harmonic(audio_array)
-    energy_total = np.sum(audio_array ** 2)
-    energy_harmonic = np.sum(harmonic ** 2)
-    noise_energy = energy_total - energy_harmonic
-    if noise_energy <= 0: noise_energy = 0.00001
-    hnr = 10 * np.log10(energy_harmonic / noise_energy)
+    noise = audio_array - harmonic
+    hnr = 10 * np.log10(np.sum(harmonic**2) / (np.sum(noise**2) + 1e-10))
 
     return [jitter, shimmer, hnr, mfcc]
 
-def prepare_dataset():
-    print("⬇️  Loading Datasets from Hugging Face...")
+def prepare_synthetic_dataset():
+    print("⬇️  Loading Healthy Data (LibriSpeech)...")
+    ds = load_dataset("librispeech_asr", "clean", split="train.100", streaming=True, trust_remote_code=True)
     
-    data_features = []
-    data_labels = [] # 0 = Healthy, 1 = Pathological
-
-    # --- A. LOAD HEALTHY DATA (LibriSpeech) ---
-    print("   Fetching Healthy samples (LibriSpeech)...")
-    # Streaming mode (streaming=True) lets us grab just a few files without downloading 50GB
-    ds_healthy = load_dataset("librispeech_asr", "clean", split="train.100", streaming=True, trust_remote_code=True)
+    features = []
+    labels = []
     
     count = 0
-    for sample in ds_healthy:
-        if count >= MAX_SAMPLES_PER_CLASS: break
+    print("⚙️  Generating Synthetic Dataset...")
+    
+    for sample in ds:
+        if count >= MAX_SAMPLES: break
         
-        # Resample to target rate
         audio = sample['audio']['array']
         sr = sample['audio']['sampling_rate']
+        
+        # 1. Resample to 16k
         if sr != TARGET_SAMPLING_RATE:
             audio = librosa.resample(audio, orig_sr=sr, target_sr=TARGET_SAMPLING_RATE)
             
-        feats = extract_features(audio, TARGET_SAMPLING_RATE)
-        if feats:
-            data_features.append(feats)
-            data_labels.append(0) # Label 0 = Healthy
-            count += 1
-            print(f"   [Healthy] Processed {count}/{MAX_SAMPLES_PER_CLASS}", end='\r')
-    
-    print("")
-
-    # --- B. LOAD PATHOLOGICAL DATA (TORGO - Dysarthric Speech) ---
-    print("   Fetching Pathological samples (TORGO Dysarthric)...")
-    # Using a specific slice of TORGO available on HF
-    # Note: If this specific dataset ID is unavailable, 'birgermoell/synthetic_dysathria' is a good backup
-    try:
-        ds_pathology = load_dataset("resproj007/torgo_dysarthric_male", split="train", streaming=True)
-    except:
-        print("⚠️  TORGO dataset busy/unavailable. Switching to Synthetic Dysarthria backup...")
-        ds_pathology = load_dataset("birgermoell/synthetic_dysathria", split="train", streaming=True)
-
-    count = 0
-    for sample in ds_pathology:
-        if count >= MAX_SAMPLES_PER_CLASS: break
+        # 2. TRIM SILENCE (Crucial Fix)
+        audio, _ = librosa.effects.trim(audio, top_db=20)
         
-        audio = sample['audio']['array']
-        sr = sample['audio']['sampling_rate']
-        
-        # Ensure audio is mono
-        if len(audio.shape) > 1: 
-            audio = np.mean(audio, axis=1)
+        # Skip if audio became too short after trimming
+        if len(audio) < 1000: continue
 
-        if sr != TARGET_SAMPLING_RATE:
-            audio = librosa.resample(audio, orig_sr=sr, target_sr=TARGET_SAMPLING_RATE)
+        # --- CLASS 0: HEALTHY ---
+        feats_healthy = extract_features(audio, TARGET_SAMPLING_RATE)
+        if feats_healthy:
+            features.append(feats_healthy)
+            labels.append(0) 
 
-        feats = extract_features(audio, TARGET_SAMPLING_RATE)
-        if feats:
-            data_features.append(feats)
-            data_labels.append(1) # Label 1 = Pathological (Tremor/Dysarthria)
-            count += 1
-            print(f"   [Pathology] Processed {count}/{MAX_SAMPLES_PER_CLASS}", end='\r')
+        # --- CLASS 1: SICK (Synthetic) ---
+        audio_sick = inject_tremor(audio, TARGET_SAMPLING_RATE)
+        feats_sick = extract_features(audio_sick, TARGET_SAMPLING_RATE)
+        if feats_sick:
+            features.append(feats_sick)
+            labels.append(1)
+            
+        count += 1
+        print(f"   Processed {count}/{MAX_SAMPLES} pairs...", end='\r')
 
-    print("\n✅ Dataset creation complete.")
-    return np.array(data_features), np.array(data_labels)
+    return np.array(features), np.array(labels)
 
 def train_svm():
-    X, y = prepare_dataset()
+    X, y = prepare_synthetic_dataset()
+    print(f"\n\nDataset Ready: {len(X)} samples.")
     
-    print(f"\nTraining on {len(X)} samples...")
-    
-    # 1. Split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # 2. Scale
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
     
-    # 3. Train SVM
-    # RBF kernel is best for non-linear boundaries in voice data
-    svm = SVC(kernel='rbf', C=10, gamma='scale', probability=True, random_state=42)
+    print("🧠 Training SVM...")
+    svm = SVC(kernel='rbf', C=10.0, probability=True, random_state=42)
     svm.fit(X_train_scaled, y_train)
     
-    # 4. Evaluate
     preds = svm.predict(X_test_scaled)
     acc = accuracy_score(y_test, preds)
+    print(f"\n✅ Model Accuracy: {acc*100:.2f}%")
     
-    print(f"\n--- RESULTS ---")
-    print(f"Model Accuracy: {acc*100:.2f}%")
-    print(classification_report(y_test, preds, target_names=['Healthy', 'Pathological']))
-    
-    # 5. Save
+    # Save to current folder
     joblib.dump(svm, MODEL_FILE)
     joblib.dump(scaler, SCALER_FILE)
-    print(f"✅ Model saved to {MODEL_FILE}")
-    print(f"✅ Scaler saved to {SCALER_FILE}")
+    print("Files saved. Now run 'copy_voice_model.py' to update the API.")
 
 if __name__ == "__main__":
     train_svm()
