@@ -116,10 +116,22 @@ def run_live_detection():
                     features = get_features(df_window)
                     
                     # Predict (Reshape because model expects a list of rows)
+                    # Predict (Reshape because model expects a list of rows)
                     prediction = model.predict([features])[0]
                     
+                    # Get the actual frequency calculated by the math
+                    real_freq = features[0] 
+
+                    # --- LOGIC GATE (The Fix) ---
+                    # If AI predicts "Tremor" (1), double-check the math.
+                    # If the frequency is NOT between 3.5Hz and 7.5Hz, override the AI.
+                    if prediction == 1:
+                        if real_freq < 3.5 or real_freq > 7.5:
+                            prediction = 2 # Force to "Voluntary"
+                            # Optional: Print a debug message so you know it happened
+                            # print(f" [Correction] Ignored {real_freq:.1f}Hz (Too slow)")
+
                     # --- DISPLAY RESULTS ---
-                    # We use carriage return '\r' to overwrite the same line (animation effect)
                     if prediction == 1: # Tremor
                         status = "⚠️  TREMOR DETECTED! (4-6Hz)"
                     elif prediction == 2: # Voluntary
@@ -128,7 +140,7 @@ def run_live_detection():
                         status = "✅  Rest / Static"
 
                     # Print formatted output
-                    print(f"\rStatus: {status: <30} | Freq: {features[0]:.1f}Hz | FSR: {features[4]:.0f}", end="")
+                    print(f"\rStatus: {status: <30} | Freq: {real_freq:.1f}Hz | FSR: {features[4]:.0f}", end="")
 
         except KeyboardInterrupt:
             print("\n\nStopping...")
