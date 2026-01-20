@@ -6,7 +6,7 @@ import pandas as pd
 # --- CONFIGURATION ---
 # CHANGE THIS to your Arduino's port! 
 # Windows: 'COM3', 'COM4', etc. | Mac: '/dev/tty.usbmodem...'
-SERIAL_PORT = 'COM3' 
+SERIAL_PORT = 'COM7' 
 BAUD_RATE = 115200
 OUTPUT_FILE = 'training_data.csv'
 RECORD_DURATION = 10 # Seconds per session
