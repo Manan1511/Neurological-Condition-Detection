@@ -77,7 +77,22 @@ def run_live_detection():
 
     while True:
         try:
-            line = ser.readline().decode('utf-8').strip()
+            # Read line
+            raw_line = ser.readline()
+            
+            # Debug Print 1: See if we get ANY bytes
+            # print(f"Raw bytes: {raw_line}") 
+            
+            line = raw_line.decode('utf-8').strip()
+            
+            # Debug Print 2: See the text
+            print(f"Received: '{line}'") 
+
+            parts = line.split(',')
+            
+            # Debug Print 3: See why it fails validation
+            if len(parts) != 8:
+                print(f"❌ REJECTED: Has {len(parts)} columns, expected 8.")
             
             if line and len(line.split(',')) == 8:
                 parts = line.split(',')
