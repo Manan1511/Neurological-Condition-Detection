@@ -39,13 +39,15 @@ const Layout = ({ children }) => {
                                     <Link
                                         key={item.name}
                                         to={item.path}
-                                        className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-full transition-all duration-300 ease-in-out ${isActive
-                                            ? 'bg-park-sage text-white shadow-md transform scale-105'
-                                            : 'text-gray-500 hover:bg-park-sage/10 hover:text-park-sage hover:shadow-sm'
+                                        className={`group relative flex items-center justify-center rounded-full transition-all duration-500 ease-in-out h-10 px-3 ${isActive
+                                            ? 'bg-park-sage text-white shadow-md'
+                                            : 'text-gray-500 hover:bg-park-sage/10 hover:text-park-sage'
                                             }`}
                                     >
-                                        <Icon className={`w-4 h-4 mr-2 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-park-sage'}`} />
-                                        {item.name}
+                                        <Icon className={`w-5 h-5 min-w-[1.25rem] transition-colors duration-500 ease-in-out ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-park-sage'}`} />
+                                        <span className={`overflow-hidden whitespace-nowrap max-w-0 opacity-0 group-hover:max-w-xs group-hover:opacity-100 group-hover:ml-2 transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]`}>
+                                            {item.name}
+                                        </span>
                                     </Link>
                                 );
                             })}
