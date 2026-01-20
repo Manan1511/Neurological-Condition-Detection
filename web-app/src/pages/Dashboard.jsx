@@ -28,6 +28,13 @@ const Dashboard = () => {
             color: "bg-purple-50 text-purple-600"
         },
         {
+            title: "Cognitive Test",
+            desc: "Stroop Color-Word test to measure executive function and inhibition.",
+            path: "/cognitive-test",
+            icon: Brain,
+            color: "bg-indigo-50 text-indigo-600"
+        },
+        {
             title: "Lifestyle Guide",
             desc: "Environmental safety and symptom management tips.",
             path: "/lifestyle",

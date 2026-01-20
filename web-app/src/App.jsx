@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import VocalTest from './pages/tests/VocalTest';
 import TapTest from './pages/tests/TapTest';
 import DualTask from './pages/tests/DualTask';
+import StroopTest from './pages/tests/StroopTest';
 import Lifestyle from './pages/Lifestyle';
 
 const App = () => {
@@ -14,6 +15,7 @@ const App = () => {
         <Route path="/vocal-test" element={<VocalTest />} />
         <Route path="/tap-test" element={<TapTest />} />
         <Route path="/dual-task" element={<DualTask />} />
+        <Route path="/cognitive-test" element={<StroopTest />} />
         <Route path="/lifestyle" element={<Lifestyle />} />
       </Routes>
     </Router>
