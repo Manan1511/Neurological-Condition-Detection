@@ -101,7 +101,7 @@ const Layout = ({ children }) => {
 
             <footer className="bg-white border-t border-gray-200 py-8 mt-12">
                 <div className="max-w-7xl mx-auto px-4 text-center text-gray-500">
-                    <p>© 2024 <span className="font-branding">NeuroLife</span>. Designed for Accessibility.</p>
+                    <p>© 2026 <span className="font-branding">NeuroLife</span>. Designed for Accessibility.</p>
                 </div>
             </footer>
         </div>
