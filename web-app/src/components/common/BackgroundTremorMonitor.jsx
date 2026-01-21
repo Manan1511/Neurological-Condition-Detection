@@ -2,16 +2,17 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useSerialContext } from '../../context/SerialContext';
 import { Activity, AlertTriangle, CheckCircle } from 'lucide-react';
 
-const BackgroundTremorMonitor = () => {
+const BackgroundTremorMonitor = ({ onLog }) => {
     const { isConnected, setDataHandler } = useSerialContext();
     const [prediction, setPrediction] = useState(null);
     const bufferRef = useRef([]);
 
     useEffect(() => {
+        // If not connected, do nothing
         if (!isConnected) return;
 
+        // Data Handler for buffering
         setDataHandler((data) => {
-            // Buffer data
             bufferRef.current.push({
                 AccelX: data.accel.x,
                 AccelY: data.accel.y,
@@ -19,22 +20,12 @@ const BackgroundTremorMonitor = () => {
                 FSR: data.fsr
             });
 
-            if (bufferRef.current.length > 50) { // 1 sec window for quick check
+            if (bufferRef.current.length > 50) {
                 bufferRef.current.shift();
-            }
-
-            // Only predict every 1s
-            if (bufferRef.current.length === 50 && Math.random() > 0.95) {
-                // Mocking a local check since we can't easily spam the API in background without lag
-                // Only send if we want real results.
-                // For now, let's just show "Monitoring..." or send casually.
-                // Actually the user WANTS the model running.
-
-                // Let's send to backend if we have a full buffer (100 samples ideally)
             }
         });
 
-        // Setup an interval to actually poll the backend properly without spamming
+        // Interval for prediction
         const interval = setInterval(async () => {
             if (bufferRef.current.length < 50) return;
 
@@ -47,17 +38,27 @@ const BackgroundTremorMonitor = () => {
                 if (res.ok) {
                     const result = await res.json();
                     setPrediction(result);
+                    // NEW: Log data to parent
+                    if (onLog) {
+                        onLog({
+                            timestamp: new Date().toLocaleTimeString(),
+                            label: result.label,
+                            confidence: result.confidence || 0,
+                            freq: result.features?.dom_freq || 0
+                        });
+                    }
                 }
             } catch (e) {
                 console.error("BG Tremor Check Error", e);
             }
-        }, 2000); // Check every 2 seconds
+        }, 2000);
 
+        // Cleanup
         return () => {
             setDataHandler(null);
             clearInterval(interval);
-        }
-    }, [isConnected, setDataHandler]);
+        };
+    }, [isConnected, setDataHandler, onLog]);
 
     if (!isConnected) return null;
 

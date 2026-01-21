@@ -21,6 +21,12 @@ const FullAssessment = () => {
     });
 
     const { connect, isConnected } = useSerialContext();
+    const [backgroundLogs, setBackgroundLogs] = useState([]);
+
+    const handleBackgroundLog = (log) => {
+        // Keep last 20 logs
+        setBackgroundLogs(prev => [...prev.slice(-19), log]);
+    };
 
     const handleNext = React.useCallback((data) => {
         console.log("FullAssessment: handleNext called from step", step, "Data:", data);
@@ -36,7 +42,7 @@ const FullAssessment = () => {
         const doc = new jsPDF();
         const date = new Date().toLocaleDateString();
 
-        // Brand Header
+        // --- Header ---
         doc.setFillColor(31, 45, 61); // park-navy
         doc.rect(0, 0, 210, 40, 'F');
         doc.setTextColor(255, 255, 255);
@@ -46,61 +52,134 @@ const FullAssessment = () => {
         doc.setFontSize(12);
         doc.setFont("helvetica", "normal");
         doc.text("Clinical Assessment Report", 20, 35);
-
         doc.setTextColor(0, 0, 0);
         doc.text(`Date: ${date}`, 150, 35);
 
-        let y = 50;
+        let y = 60;
 
-        // 1. Tremor
+        // --- 1. Resting Tremor ---
         doc.setFontSize(16);
         doc.setTextColor(31, 45, 61);
-        doc.text("1. Resting Tremor", 20, y);
+        doc.text("1. Resting Tremor Analysis", 20, y);
         y += 10;
-        doc.setFontSize(12);
+        doc.setFontSize(10);
         doc.setTextColor(100);
         if (results.tremor) {
-            doc.text(`Status: ${results.tremor.label}`, 25, y);
-            doc.text(`Tremor Energy: ${results.tremor.features.tremor_energy.toFixed(2)}`, 100, y);
-            y += 8;
-            doc.text(`Dominant Freq: ${results.tremor.features.dom_freq.toFixed(2)} Hz`, 25, y);
+            doc.text(`Classification: ${results.tremor.label}`, 25, y);
+            doc.text(`Dominant Frequency: ${results.tremor.features.dom_freq.toFixed(2)} Hz`, 100, y);
+            y += 6;
+            doc.text(`Tremor Energy: ${results.tremor.features.tremor_energy.toFixed(2)}`, 25, y);
+
+            // Simple Bar for Energy
+            doc.setDrawColor(200);
+            doc.rect(100, y - 4, 50, 4);
+            doc.setFillColor(results.tremor.features.tremor_energy > 500 ? 255 : 0, results.tremor.features.tremor_energy > 500 ? 0 : 200, 0);
+            const w = Math.min(50, results.tremor.features.tremor_energy / 20); // Scale
+            doc.rect(100, y - 4, w, 4, 'F');
         } else {
             doc.text("Not Completed", 25, y);
         }
-        y += 15;
+        y += 20;
 
-        // 2. Vocal
+        // --- 2. Vocal Motor ---
         doc.setFontSize(16);
         doc.setTextColor(31, 45, 61);
         doc.text("2. Vocal Motor Analysis", 20, y);
         y += 10;
-        doc.setFontSize(12);
+        doc.setFontSize(10);
         doc.setTextColor(100);
         if (results.vocal) {
-            doc.text(`Status: ${results.vocal.label} (${results.vocal.confidence}%)`, 25, y);
-            y += 8;
-            doc.text(`Jitter: ${results.vocal.features.jitter.toFixed(2)}%`, 25, y);
-            doc.text(`Shimmer: ${results.vocal.features.shimmer.toFixed(2)}%`, 80, y);
-            doc.text(`HNR: ${results.vocal.features.hnr.toFixed(2)} dB`, 140, y);
+            doc.text(`Classification: ${results.vocal.label} (${results.vocal.confidence}%)`, 25, y);
+            y += 6;
+            doc.text(`Jitter (Micro-fluctuations): ${results.vocal.features.jitter.toFixed(2)}%`, 25, y);
+            doc.text(`Shimmer (Amplitude Var): ${results.vocal.features.shimmer.toFixed(2)}%`, 100, y);
+            y += 6;
+            doc.text(`HNR (Noise Ratio): ${results.vocal.features.hnr.toFixed(2)} dB`, 25, y);
         } else {
             doc.text("Not Completed", 25, y);
         }
-        y += 15;
+        y += 20;
 
-        // 3. Tap
+        // --- 3. Rapid Tap ---
         doc.setFontSize(16);
         doc.setTextColor(31, 45, 61);
         doc.text("3. Rapid Tap (Bradykinesia)", 20, y);
         y += 10;
-        doc.setFontSize(12);
+        doc.setFontSize(10);
         doc.setTextColor(100);
         if (results.tap) {
             doc.text(`Total Taps (15s): ${results.tap.taps}`, 25, y);
             doc.text(`Fatigue Decay: ${results.tap.fatigue}%`, 100, y);
+
+            // Tap Speed Graph
+            y += 10;
+            doc.text("Tap Intervals (ms) - Lower is Faster", 25, y);
+            y += 5;
+
+            if (results.tap.data && results.tap.data.length > 2) {
+                const data = results.tap.data;
+                const intervals = [];
+                for (let i = 1; i < data.length; i++) intervals.push(data[i] - data[i - 1]);
+
+                // Draw Graph
+                const startX = 25;
+                const startY = y + 30;
+                const maxInterval = Math.max(...intervals, 500);
+                const stepX = 100 / intervals.length;
+
+                doc.setLineWidth(0.5);
+                doc.setDrawColor(100, 150, 200);
+
+                for (let i = 0; i < intervals.length - 1; i++) {
+                    const h1 = (intervals[i] / maxInterval) * 30;
+                    const h2 = (intervals[i + 1] / maxInterval) * 30;
+                    doc.line(startX + (i * stepX), startY - h1, startX + ((i + 1) * stepX), startY - h2);
+                }
+
+                // Baseline
+                doc.setDrawColor(200);
+                doc.line(startX, startY, startX + 100, startY);
+                y += 35;
+            } else {
+                doc.text(" insufficient data for graph", 25, y);
+                y += 10;
+            }
+
         } else {
             doc.text("Not Completed", 25, y);
+            y += 10;
         }
-        y += 15;
+        y += 10;
+
+        // --- 4. Background Monitor Log ---
+        if (y > 230) { doc.addPage(); y = 20; }
+
+        doc.setFontSize(16);
+        doc.setTextColor(31, 45, 61);
+        doc.text("4. Background Monitor Logs", 20, y);
+        y += 10;
+        doc.setFontSize(9);
+        doc.setTextColor(120);
+
+        doc.text("Timestamp", 25, y);
+        doc.text("Event", 60, y);
+        doc.text("Confidence", 120, y);
+        doc.text("Freq", 160, y);
+        y += 4;
+        doc.line(25, y, 180, y);
+        y += 5;
+
+        backgroundLogs.slice(0, 15).forEach(log => {
+            doc.text(log.timestamp, 25, y);
+            doc.text(log.label, 60, y);
+            doc.text(`${log.confidence}%`, 120, y);
+            doc.text(`${log.freq.toFixed(1)} Hz`, 160, y);
+            y += 6;
+        });
+
+        if (backgroundLogs.length === 0) {
+            doc.text("No significant background events detected.", 25, y);
+        }
 
         // Save
         doc.save(`neurolife_report_${Date.now()}.pdf`);
@@ -117,7 +196,7 @@ const FullAssessment = () => {
     return (
         <Layout>
             <div className="max-w-5xl mx-auto">
-                <BackgroundTremorMonitor />
+                <BackgroundTremorMonitor onLog={handleBackgroundLog} />
                 {/* Wizard Header */}
                 <div className="mb-12">
                     <h1 className="text-3xl font-bold text-park-navy mb-6 text-center">Full Diagnostic Assessment</h1>

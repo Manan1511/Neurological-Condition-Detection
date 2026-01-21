@@ -90,31 +90,34 @@ const TapTest = ({ onComplete, isWizardMode = false }) => {
         }
     };
 
-    // Trigger completion
+    // Trigger completion manually now
+    const handleContinue = () => {
+        if (submittedRef.current) return;
+        submittedRef.current = true;
+
+        let safeFatigue = 0;
+        try {
+            const res = calculateResultsLogic(taps);
+            safeFatigue = res.fatigue;
+        } catch (e) {
+            console.warn("Fatigue calculation failed", e);
+        }
+
+        onComplete({
+            taps: taps.length,
+            fatigue: safeFatigue,
+            data: taps // Pass raw data for graphs
+        });
+    };
+
+    // Removed auto-advance useEffect
+    /*
     useEffect(() => {
         if (showResults && isWizardMode && onComplete && !submittedRef.current) {
-            const timer = setTimeout(() => {
-                if (!submittedRef.current) {
-                    submittedRef.current = true;
-                    console.log("TapTest: Completing step...", taps.length);
-
-                    let safeFatigue = 0;
-                    try {
-                        const res = calculateResultsLogic(taps);
-                        safeFatigue = res.fatigue;
-                    } catch (e) {
-                        console.warn("Fatigue calculation failed", e);
-                    }
-
-                    onComplete({
-                        taps: taps.length,
-                        fatigue: safeFatigue
-                    });
-                }
-            }, 1500);
-            return () => clearTimeout(timer);
+             // ...
         }
-    }, [showResults, isWizardMode, onComplete, taps]);
+    }, ...);
+    */
 
     const registerTap = useCallback(() => {
         if (!isActive) return;
@@ -283,8 +286,10 @@ const TapTest = ({ onComplete, isWizardMode = false }) => {
                     </div>
 
                     {isWizardMode && (
-                        <div className="text-center text-park-sage font-bold animate-pulse">
-                            Processing Results...
+                        <div className="text-center mt-8">
+                            <Button onClick={handleContinue} className="w-64 text-lg py-4 shadow-xl">
+                                Continue to Report
+                            </Button>
                         </div>
                     )}
 
