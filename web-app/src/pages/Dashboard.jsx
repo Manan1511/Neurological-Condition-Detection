@@ -1,7 +1,7 @@
 import React from 'react';
 import Layout from '../components/common/Layout';
 import Card from '../components/common/Card';
-import { Mic, Activity, Brain, Info, ArrowRight, Puzzle } from 'lucide-react';
+import { Mic, Activity, Brain, Info, ArrowRight, Puzzle, Waves } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const Dashboard = () => {
@@ -12,6 +12,13 @@ const Dashboard = () => {
             path: "/vocal-test",
             icon: Mic,
             color: "bg-blue-50 text-blue-600"
+        },
+        {
+            title: "Resting Tremor",
+            desc: "Real-time detection of resting tremors (4-6Hz) vs voluntary movement.",
+            path: "/tremor-test",
+            icon: Waves,
+            color: "bg-teal-50 text-teal-600"
         },
         {
             title: "Rapid Tap Test",
@@ -48,7 +55,7 @@ const Dashboard = () => {
             <div className="max-w-6xl mx-auto">
                 <div className="text-center mb-16">
                     <h1 className="text-5xl font-bold text-park-navy mb-6 tracking-tight">
-                        Welcome to <span className="text-park-sage font-branding">NeuroLife</span>
+                        Welcome to <span className="text-park-sage font-branding">neurolife</span>
                     </h1>
                     <p className="text-2xl text-gray-600 max-w-3xl mx-auto">
                         Your companion for monitoring neurological health and optimizing your living environment.

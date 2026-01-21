@@ -7,7 +7,7 @@ from collections import deque
 from scipy.fft import fft, fftfreq
 
 # --- CONFIGURATION ---
-SERIAL_PORT = 'COM7'   # CHECK THIS!
+SERIAL_PORT = 'COM3'   # CHECK THIS!
 BAUD_RATE = 115200
 MODEL_FILE = 'parkinson_tremor_model.pkl'
 WINDOW_SIZE = 100      # Must match training (2 seconds)

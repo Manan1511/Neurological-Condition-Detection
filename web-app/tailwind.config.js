@@ -18,7 +18,7 @@ export default {
       },
       fontFamily: {
         sans: ['"Libre Franklin"', 'sans-serif'],
-        branding: ['"Maitree"', 'serif'],
+        branding: ['"DM Sans"', 'sans-serif'],
       },
     },
   },

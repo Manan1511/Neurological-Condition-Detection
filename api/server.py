@@ -184,44 +184,55 @@ def extract_voice_features(audio, sample_rate):
         return None
 
 @app.route('/predict_audio', methods=['POST'])
+@app.route('/predict_audio', methods=['POST'])
 def predict_audio():
+    print("🎤 [1] Received /predict_audio request", flush=True)
     if not speech_model:
         return jsonify({'error': 'Voice model not loaded'}), 500
 
     try:
+        print("🎤 [2] Parsing JSON...", flush=True)
         data = request.json
+        print("🎤 [3] JSON Parsed. Checking keys...", flush=True)
+        
         # Expecting 'audio' as list of floats, 'rate' as int
         if 'audio' not in data or 'rate' not in data:
             return jsonify({'error': 'Missing audio data or sample rate'}), 400
         
+        print(f"🎤 [4] Creating Numpy Array (Len: {len(data['audio'])})...", flush=True)
         audio_array = np.array(data['audio'], dtype=np.float32)
         rate = data['rate']
+        print("🎤 [5] Numpy Array Created. Trimming...", flush=True)
         
         # Trim silence like in training
         audio_array, _ = librosa.effects.trim(audio_array, top_db=20)
+        print("🎤 [6] Trimmed. Extracting Features...", flush=True)
         
         features = extract_voice_features(audio_array, rate)
+        print("🎤 [7] Features Extracted.", flush=True)
         
         if features is None:
             return jsonify({'error': 'Could not extract features (too short/silent?)'}), 400
             
         # Predict
+        print("🎤 [8] Predicting...", flush=True)
         feat_array = np.array([features])
         feat_scaled = speech_scaler.transform(feat_array)
         prediction = speech_model.predict(feat_scaled)[0]
         probs = speech_model.predict_proba(feat_scaled)[0]
-        confidence = np.max(probs) * 100
+        confidence = float(np.max(probs) * 100) # Cast to float
+        print(f"🎤 [9] Predicted: {prediction}", flush=True)
         
-        label = "Tremor" if prediction == 1 else "Healthy"
+        label = "Tremor" if int(prediction) == 1 else "Healthy" # Cast to int
         
         result = {
             'label': label,
             'confidence': round(confidence, 1),
             'features': {
-                'jitter': round(features[0], 2),
-                'shimmer': round(features[1], 2),
-                'hnr': round(features[2], 1),
-                'mfcc': round(features[3], 2)
+                'jitter': float(round(features[0], 2)),
+                'shimmer': float(round(features[1], 2)),
+                'hnr': float(round(features[2], 1)),
+                'mfcc': float(round(features[3], 2))
             }
         }
         

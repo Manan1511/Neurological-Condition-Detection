@@ -1,22 +1,30 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 
-/**
- * Hook to manage Web Serial API connection and data parsing.
- * 
- * firmware expectation:
- * 115200 baud
- * CSV: Timestamp, AccelX, AccelY, AccelZ, GyroX, GyroY, GyroZ, FSR
- */
-const useSerialConnection = () => {
+const SerialContext = createContext();
+
+export const SerialProvider = ({ children }) => {
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState(null);
     const portRef = useRef(null);
     const readerRef = useRef(null);
     const keepReadingRef = useRef(false);
 
-    const connect = useCallback(async (onData) => {
+    // Subscribers
+    const dataHandlerRef = useRef(null);
+
+    const setDataHandler = useCallback((handler) => {
+        dataHandlerRef.current = handler;
+    }, []);
+
+    const connect = useCallback(async () => {
         if (!navigator.serial) {
             setError("Web Serial API not supported in this browser.");
+            return;
+        }
+
+        // Prevent multiple connections
+        if (portRef.current) {
+            console.warn("Already connected.");
             return;
         }
 
@@ -30,7 +38,7 @@ const useSerialConnection = () => {
             keepReadingRef.current = true;
 
             // Start reading loop
-            readLoop(port, onData);
+            readLoop(port);
         } catch (err) {
             console.error("Serial Connection Error:", err);
             setError(err.message || "Failed to connect.");
@@ -47,19 +55,10 @@ const useSerialConnection = () => {
                 console.error("Error cancelling reader:", e);
             }
         }
-
-        if (portRef.current) {
-            try {
-                await portRef.current.close();
-            } catch (e) {
-                console.error("Error closing port:", e);
-            }
-            portRef.current = null;
-        }
-        setIsConnected(false);
+        // Port closing is handled after reader lock release in readLoop
     }, []);
 
-    const readLoop = async (port, onData) => {
+    const readLoop = async (port) => {
         const textDecoder = new TextDecoderStream();
         const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
         const reader = textDecoder.readable.getReader();
@@ -80,14 +79,10 @@ const useSerialConnection = () => {
 
                     for (const line of lines) {
                         const cleanLine = line.trim();
-                        console.log("Raw:", cleanLine);
                         if (cleanLine) {
                             const parsed = parseLine(cleanLine);
-                            if (parsed) {
-                                console.log("Parsed:", parsed);
-                                onData(parsed);
-                            } else {
-                                console.warn("Parse Fail:", cleanLine);
+                            if (parsed && dataHandlerRef.current) {
+                                dataHandlerRef.current(parsed);
                             }
                         }
                     }
@@ -96,9 +91,16 @@ const useSerialConnection = () => {
         } catch (error) {
             console.error("Read Loop Error:", error);
             setError("Connection lost.");
-            setIsConnected(false);
         } finally {
             reader.releaseLock();
+            try {
+                await readableStreamClosed.catch(() => { }); // Catch pipeTo errors
+                await port.close();
+            } catch (e) {
+                console.error("Error closing port:", e);
+            }
+            portRef.current = null;
+            setIsConnected(false);
         }
     };
 
@@ -118,44 +120,30 @@ const useSerialConnection = () => {
                         y: parseFloat(parts[5]),
                         z: parseFloat(parts[6])
                     },
-                    fsr: intOrFloat(parts[7])
+                    fsr: parseFloat(parts[7]) || 0
                 };
             }
             return null;
         } catch (e) {
-            return null; // Ignore malformed lines
+            return null;
         }
     };
 
-    const intOrFloat = (val) => {
-        const parsed = parseFloat(val);
-        return isNaN(parsed) ? 0 : parsed;
-    }
-
-    // Auto-disconnect on unmount
+    // Auto-cleanup on unmount of the Provider (App close)
     useEffect(() => {
         return () => {
+            // Force disconnect if unmounting
             if (portRef.current) {
-                console.log("Cleaning up Serial Connection...");
-                // We cannot await here, but we trigger the close sequence
-                keepReadingRef.current = false;
-                if (readerRef.current) {
-                    readerRef.current.cancel().catch(e => console.error(e));
-                }
-                // Port closing is tricky if the reader is locked.
-                // The readLoop catches the cancel and releases lock.
-                // But we need to ensure port.close() happens after lock release.
-                // Since this is cleanup, we rely on the readLoop's finally block or similar logic?
-                // Actually, disconnect() function handles this logic. We should call it.
-                // However, since it is async, we fire and forget, but we need to ensure the logic runs.
-
-                // Better approach: Call disconnect() which handles the flags
                 disconnect();
             }
         };
-    }, []); // Run only on mount/unmount (closure covers disconnect availability)
+    }, []);
 
-    return { connect, disconnect, isConnected, error };
+    return (
+        <SerialContext.Provider value={{ connect, disconnect, isConnected, error, setDataHandler }}>
+            {children}
+        </SerialContext.Provider>
+    );
 };
 
-export default useSerialConnection;
+export const useSerialContext = () => useContext(SerialContext);

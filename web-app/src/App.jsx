@@ -5,21 +5,26 @@ import VocalTest from './pages/tests/VocalTest';
 import TapTest from './pages/tests/TapTest';
 import DualTask from './pages/tests/DualTask';
 import StroopTest from './pages/tests/StroopTest';
+import TremorTest from './pages/tests/TremorTest';
 import Lifestyle from './pages/Lifestyle';
+import { SerialProvider } from './context/SerialContext';
 
-const App = () => {
+function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/vocal-test" element={<VocalTest />} />
-        <Route path="/tap-test" element={<TapTest />} />
-        <Route path="/dual-task" element={<DualTask />} />
-        <Route path="/cognitive-test" element={<StroopTest />} />
-        <Route path="/lifestyle" element={<Lifestyle />} />
-      </Routes>
-    </Router>
+    <SerialProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/vocal-test" element={<VocalTest />} />
+          <Route path="/tremor-test" element={<TremorTest />} />
+          <Route path="/tap-test" element={<TapTest />} />
+          <Route path="/dual-task" element={<DualTask />} />
+          <Route path="/cognitive-test" element={<StroopTest />} />
+          <Route path="/lifestyle" element={<Lifestyle />} />
+        </Routes>
+      </Router>
+    </SerialProvider>
   );
-};
+}
 
 export default App;

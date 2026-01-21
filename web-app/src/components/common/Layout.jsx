@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Activity, Mic, Brain, Info, Menu, X, Puzzle } from 'lucide-react';
+import { Home, Activity, Mic, Brain, Info, Menu, X, Puzzle, Waves } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 const Layout = ({ children }) => {
@@ -14,6 +14,7 @@ const Layout = ({ children }) => {
     const navItems = [
         { name: 'Dashboard', path: '/', icon: Home },
         { name: 'Vocal Test', path: '/vocal-test', icon: Mic },
+        { name: 'Resting Tremor', path: '/tremor-test', icon: Waves },
         { name: 'Tap Test', path: '/tap-test', icon: Activity },
         { name: 'Dual Task', path: '/dual-task', icon: Brain },
         { name: 'Stroop', path: '/cognitive-test', icon: Puzzle },
@@ -27,7 +28,7 @@ const Layout = ({ children }) => {
                     <div className="flex justify-between h-20">
                         <div className="flex">
                             <Link to="/" className="flex-shrink-0 flex items-center">
-                                <span className="font-bold text-2xl text-park-sage tracking-tight font-branding">NeuroLife</span>
+                                <span className="font-bold text-2xl text-park-sage tracking-tight font-branding">neurolife</span>
                             </Link>
                         </div>
 
@@ -104,7 +105,7 @@ const Layout = ({ children }) => {
 
             <footer className="bg-white border-t border-gray-200 py-8 mt-12">
                 <div className="max-w-7xl mx-auto px-4 text-center text-gray-500">
-                    <p>© 2026 <span className="font-branding">NeuroLife</span>. Designed for Accessibility.</p>
+                    <p>© 2026 <span className="font-branding">neurolife</span>. Designed for Accessibility.</p>
                 </div>
             </footer>
         </div>

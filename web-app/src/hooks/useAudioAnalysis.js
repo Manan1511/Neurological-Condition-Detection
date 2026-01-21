@@ -18,9 +18,15 @@ const useAudioAnalysis = () => {
     const amplitudeHistoryRef = useRef([]);
     const pitchHistoryRef = useRef([]);
 
+    // Stale closure fix
+    const isRecordingRef = useRef(false);
+
     // Config
     const FFT_SIZE = 2048;
     const SILENCE_THRESHOLD = 0.02; // Amplitude threshold to count as "voicing"
+
+    // Full Buffer for Backend (Float32)
+    const audioBufferRef = useRef([]);
 
     const startRecording = useCallback(async () => {
         try {
@@ -35,9 +41,10 @@ const useAudioAnalysis = () => {
             sourceRef.current.connect(analyserRef.current);
 
             setIsRecording(true);
+            isRecordingRef.current = true;
+
             setDuration(0);
             setJitter(0);
-            setShimmer(0);
             setShimmer(0);
             amplitudeHistoryRef.current = [];
             pitchHistoryRef.current = [];
@@ -54,6 +61,8 @@ const useAudioAnalysis = () => {
 
     const stopRecording = useCallback(() => {
         setIsRecording(false);
+        isRecordingRef.current = false;
+
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
 
         if (streamRef.current) {
@@ -68,9 +77,6 @@ const useAudioAnalysis = () => {
 
     }, []);
 
-    // Full Buffer for Backend (Float32)
-    const audioBufferRef = useRef([]);
-
     const analyze = () => {
         if (!analyserRef.current) return;
 
@@ -78,47 +84,39 @@ const useAudioAnalysis = () => {
         const timeData = new Float32Array(bufferLength);
         analyserRef.current.getFloatTimeDomainData(timeData);
 
-        // Accumulate for backend (downsample if needed? No, backend expects raw stream chunks)
-        // Note: requestAnimationFrame is ~60Hz. 2048 buffer at 44.1kHz is ~46ms. 
-        // 60Hz frame is 16ms. There is overlap/gap issue if we just push timeData.
-        // Better to use ScriptProcessor or AudioWorklet for recording. 
-        // But for simplicity in this prototype, let's use the createScriptProcessor approach OR MediaRecorder.
-        // Actually, let's just use the current analyzing loop for metrics, and add a separate ScriptProcessor for recording raw data?
-        // Or simpler: just push the buffer. Overlap is fine for this ML model (it uses statistics over the whole clip).
-
-        if (isRecording) {
-            // Convert Float32Array to regular array to spread
+        // Access current ref value to avoid stale closure
+        if (isRecordingRef.current) {
+            // Buffer management:
+            // Since we overlap significantly (60Hz vs 46ms window), we shouldn't just push EVERYTHING.
+            // But for safety to ensure no data loss for ML, pushing all is safer if RAM permits.
+            // 5s of float32 at 44.1k is ~800KB if contiguous. With overlap 3x, it's 2.4MB. Fine.
             audioBufferRef.current.push(...timeData);
-        }
 
-        // 1. Calculate RMS Amplitude (Loudness) for this frame
-        let sumSquares = 0;
-        for (let i = 0; i < bufferLength; i++) {
-            sumSquares += timeData[i] * timeData[i];
-        }
-        const rms = Math.sqrt(sumSquares / bufferLength);
-
-        // Update Duration if above threshold
-        if (rms > SILENCE_THRESHOLD) {
-            setDuration((Date.now() - startTimeRef.current) / 1000);
-            amplitudeHistoryRef.current.push(rms);
-
-            // 2. Calculate Pitch (Autocorrelation) for Jitter
-            const pitch = autoCorrelate(timeData, audioContextRef.current.sampleRate);
-            if (pitch !== -1) {
-                pitchHistoryRef.current.push(pitch);
+            // 1. Calculate RMS Amplitude (Loudness) for this frame
+            let sumSquares = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sumSquares += timeData[i] * timeData[i];
             }
-        } else {
-            // Silence detected - maybe stop? For now we just don't add to history
-            // If silence persists for > 1s, we could auto-stop
-        }
+            const rms = Math.sqrt(sumSquares / bufferLength);
 
-        rafRef.current = requestAnimationFrame(analyze);
+            // Update Duration if above threshold
+            if (rms > SILENCE_THRESHOLD) {
+                setDuration((Date.now() - startTimeRef.current) / 1000);
+                amplitudeHistoryRef.current.push(rms);
+
+                // 2. Calculate Pitch (Autocorrelation) for Jitter
+                const pitch = autoCorrelate(timeData, audioContextRef.current.sampleRate);
+                if (pitch !== -1) {
+                    pitchHistoryRef.current.push(pitch);
+                }
+            }
+
+            rafRef.current = requestAnimationFrame(analyze);
+        }
     };
 
     const calculateMetrics = () => {
-        // --- Shimmer (Amplitude Perturbation) ---
-        // Formula: Mean absolute difference between consecutive amplitudes / Mean amplitude
+        // --- Shimmer ---
         const amps = amplitudeHistoryRef.current;
         if (amps.length > 10) {
             let sumDiff = 0;
@@ -129,18 +127,13 @@ const useAudioAnalysis = () => {
             }
             const meanAmp = sumAmp / amps.length;
             const calculatedShimmer = (sumDiff / (amps.length - 1)) / meanAmp;
-            // Convert to percentage (commonly used)
             setShimmer(calculatedShimmer * 100);
         }
 
-        // --- Jitter (Frequency Perturbation) ---
-        // Formula: Mean absolute difference between consecutive periods / Mean period
+        // --- Jitter ---
         const pitches = pitchHistoryRef.current;
         if (pitches.length > 10) {
-            let sumJitter = 0;
             let numPeriods = 0;
-
-            // We need periods (1/frequency)
             const periods = pitches.map(f => 1 / f);
             let sumPeriod = 0;
             let sumPeriodDiff = 0;
@@ -218,8 +211,9 @@ const useAudioAnalysis = () => {
         duration,
         metrics: { jitter, shimmer },
         analyser: analyserRef.current,
-        audioBuffer: audioBufferRef // Expose ref
+        audioBuffer: audioBufferRef
     };
 };
 
 export default useAudioAnalysis;
+

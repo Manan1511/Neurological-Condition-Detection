@@ -24,6 +24,14 @@ const DualTask = () => {
     const { connect, disconnect, isConnected: serialConnected } = useSerialConnection();
     const dataBufferRef = useRef([]);
 
+    // Refs for callback access
+    const phaseRef = useRef(phase);
+
+    // Keep phaseRef sync'd
+    useEffect(() => {
+        phaseRef.current = phase;
+    }, [phase]);
+
     // --- EFFECT ---
     useEffect(() => {
         let interval;
@@ -39,12 +47,13 @@ const DualTask = () => {
 
     useEffect(() => {
         // Flash new math questions during dual phase
+        // Slower interval (5s) for better user experience
         if (phase === 'dual') {
             const mathInterval = setInterval(() => {
                 const nums = [100, 93, 86, 79, 72, 65, 58, 51, 44, 37];
                 const rand = nums[Math.floor(Math.random() * nums.length)];
                 setMathQuestion(`${rand} - 7 = ?`);
-            }, 2500);
+            }, 5000);
             return () => clearInterval(mathInterval);
         }
     }, [phase]);
@@ -57,7 +66,7 @@ const DualTask = () => {
         // Tremor = Accel variance
         const mag = Math.sqrt(data.accel.x ** 2 + data.accel.y ** 2 + data.accel.z ** 2);
 
-        if (phase === 'baseline' || phase === 'dual') {
+        if (phaseRef.current === 'baseline' || phaseRef.current === 'dual') {
             dataBufferRef.current.push(mag);
         }
     };
@@ -121,12 +130,14 @@ const DualTask = () => {
         await connect((data) => {
             // 1. Existing Logic for Variance
             const mag = Math.sqrt(data.accel.x ** 2 + data.accel.y ** 2 + data.accel.z ** 2);
-            if (phase === 'baseline' || phase === 'dual') {
+
+            // Use REF to access current phase inside closure
+            if (phaseRef.current === 'baseline' || phaseRef.current === 'dual') {
                 dataBufferRef.current.push(mag);
             }
 
             // 2. ML Logic
-            if (phase === 'baseline' || phase === 'dual') {
+            if (phaseRef.current === 'baseline' || phaseRef.current === 'dual') {
                 mlBufferRef.current.push({
                     AccelX: data.accel.x,
                     AccelY: data.accel.y,
@@ -146,7 +157,7 @@ const DualTask = () => {
                         .then(res => res.json())
                         .then(res => {
                             if (res.label === 'Tremor') {
-                                console.log("Tremor Detected during", phase);
+                                console.log("Tremor Detected during", phaseRef.current);
                             }
                         })
                         .catch(e => console.error(e));
