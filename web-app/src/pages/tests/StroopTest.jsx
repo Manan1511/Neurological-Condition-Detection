@@ -5,7 +5,8 @@ import Button from '../../components/common/Button';
 import { Brain, CheckCircle, AlertTriangle, RotateCcw, Play } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 
-const StroopTest = () => {
+const StroopTest = ({ onComplete, isWizardMode = false }) => {
+    console.log("StroopTest: Mounted, WizardMode:", isWizardMode);
     const [gameState, setGameState] = useState('intro'); // intro, test, results
     const [stimulus, setStimulus] = useState(null);
     const [feedback, setFeedback] = useState(null);
@@ -13,7 +14,7 @@ const StroopTest = () => {
     const [completedTrials, setCompletedTrials] = useState(0);
 
     // Configuration
-    const TOTAL_TRIALS = 20; // 10 Neutral, 10 Incongruent
+    const TOTAL_TRIALS = isWizardMode ? 12 : 20; // Fewer trials for wizard mode to save time
     const COLORS = [
         { name: 'RED', hex: '#EF4444', key: 'r' },
         { name: 'GREEN', hex: '#22C55E', key: 'g' },
@@ -23,6 +24,13 @@ const StroopTest = () => {
 
     const startTimeRef = useRef(null);
     const timeoutRef = useRef(null);
+
+    // Auto-start for wizard mode
+    useEffect(() => {
+        if (isWizardMode && gameState === 'intro') {
+            setTimeout(startTest, 1000); // Small delay to let user see "Start"
+        }
+    }, [isWizardMode]);
 
     // --- LOGIC ---
 
@@ -47,15 +55,17 @@ const StroopTest = () => {
         };
     };
 
-    const nextTrial = useCallback(() => {
-        setFeedback(null); // Clear feedback immediately
+    // Use Ref for results to avoid closure staleness in timeouts
+    const resultsRef = useRef({ neutral: [], incongruent: [] });
 
-        if (completedTrials >= TOTAL_TRIALS) {
-            setGameState('results');
+    const nextTrial = useCallback(() => {
+        setFeedback(null);
+
+        if (gameState === 'test' && completedTrials >= TOTAL_TRIALS) {
+            finishTest();
             return;
         }
 
-        // Random Inter-Stimulus Interval (ISI) 500-1500ms
         const delay = 500 + Math.random() * 1000;
 
         timeoutRef.current = setTimeout(() => {
@@ -64,13 +74,34 @@ const StroopTest = () => {
             startTimeRef.current = Date.now();
         }, delay);
 
-    }, [completedTrials]);
+    }, [completedTrials, TOTAL_TRIALS, gameState]); // Added gameState to dep
+
+    const finishTest = () => {
+        console.log("StroopTest: Finishing...");
+        setGameState('results');
+
+        if (isWizardMode && onComplete) {
+            // Use results from Ref
+            setTimeout(() => {
+                const currentResults = resultsRef.current;
+                console.log("StroopTest: Completing with results", currentResults);
+
+                const localAvgIncongruent = getAverage(currentResults.incongruent);
+                const localAvgNeutral = getAverage(currentResults.neutral);
+                const score = localAvgIncongruent - localAvgNeutral;
+
+                onComplete({
+                    interferenceScore: score,
+                    avgNeutral: localAvgNeutral,
+                    avgIncongruent: localAvgIncongruent
+                });
+            }, 3000);
+        }
+    };
 
     const handleInput = useCallback((e) => {
         if (gameState !== 'test' || !stimulus) return;
-
         const pressedKey = e.key.toLowerCase();
-        // Valid keys only
         if (!['r', 'g', 'b', 'y'].includes(pressedKey)) return;
 
         const targetKey = COLORS.find(c => c.name === stimulus.colorName).key;
@@ -78,6 +109,11 @@ const StroopTest = () => {
         const isCorrect = pressedKey === targetKey;
 
         if (isCorrect) {
+            // Update State AND Ref
+            const newRes = { ...resultsRef.current };
+            newRes[stimulus.type].push(reactionTime);
+            resultsRef.current = newRes;
+
             setResults(prev => ({
                 ...prev,
                 [stimulus.type]: [...prev[stimulus.type], reactionTime]
@@ -85,16 +121,15 @@ const StroopTest = () => {
             setFeedback('Correct');
         } else {
             setFeedback('Miss');
-            // We penalize errors by not recording the time (or adding a penalty in real clinical settings)
         }
 
         setStimulus(null);
         setCompletedTrials(prev => prev + 1);
-
-        // Short feedback pause
         setTimeout(nextTrial, 300);
 
-    }, [gameState, stimulus, nextTrial, completedTrials]);
+    }, [gameState, stimulus, nextTrial]);
+
+
 
     // Keyboard Listener
     useEffect(() => {
@@ -131,104 +166,119 @@ const StroopTest = () => {
         { name: 'Incongruent (Conflict)', time: Math.round(avgIncongruent), fill: '#EF4444' }
     ];
 
-    return (
-        <Layout>
-            <div className="max-w-4xl mx-auto space-y-8">
+    const Content = () => (
+        <div className="max-w-4xl mx-auto space-y-8">
+            {!isWizardMode && (
                 <header className="text-center mb-8">
                     <h1 className="text-4xl font-bold text-park-navy mb-4">Stroop Interference Test</h1>
                     <p className="text-xl text-gray-600">
                         Measures <span className="font-bold text-park-sage">Cognitive Inhibition</span>.
                     </p>
                 </header>
+            )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <Card title="Instructions" className="h-full">
-                        <div className="space-y-4 text-gray-700 text-lg">
-                            <p>Identify the <span className="font-bold underline">INK COLOR</span> of the text shown.</p>
-                            <ul className="list-disc pl-5 space-y-2">
-                                <li>If you see <span className="font-bold text-red-500">XXXX</span>, press <b>R</b> (Red).</li>
-                                <li>If you see <span className="font-bold text-blue-500">RED</span>, press <b>B</b> (Blue).</li>
-                            </ul>
-                            <div className="grid grid-cols-4 gap-2 mt-6">
-                                <div className="p-3 bg-red-100 rounded text-center border-2 border-red-200"><b>R</b><br /><span className="text-xs">Red</span></div>
-                                <div className="p-3 bg-green-100 rounded text-center border-2 border-green-200"><b>G</b><br /><span className="text-xs">Green</span></div>
-                                <div className="p-3 bg-blue-100 rounded text-center border-2 border-blue-200"><b>B</b><br /><span className="text-xs">Blue</span></div>
-                                <div className="p-3 bg-yellow-100 rounded text-center border-2 border-yellow-200"><b>Y</b><br /><span className="text-xs">Yell</span></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <Card title="Instructions" className="h-full">
+                    <div className="space-y-4 text-gray-700 text-lg">
+                        <p>Identify the <span className="font-bold underline">INK COLOR</span> of the text shown.</p>
+                        <ul className="list-disc pl-5 space-y-2">
+                            <li>If you see <span className="font-bold text-red-500">XXXX</span>, press <b>R</b> (Red).</li>
+                            <li>If you see <span className="font-bold text-blue-500">RED</span>, press <b>B</b> (Blue).</li>
+                        </ul>
+                        <div className="grid grid-cols-4 gap-2 mt-6">
+                            <div className="p-3 bg-red-100 rounded text-center border-2 border-red-200"><b>R</b><br /><span className="text-xs">Red</span></div>
+                            <div className="p-3 bg-green-100 rounded text-center border-2 border-green-200"><b>G</b><br /><span className="text-xs">Green</span></div>
+                            <div className="p-3 bg-blue-100 rounded text-center border-2 border-blue-200"><b>B</b><br /><span className="text-xs">Blue</span></div>
+                            <div className="p-3 bg-yellow-100 rounded text-center border-2 border-yellow-200"><b>Y</b><br /><span className="text-xs">Yell</span></div>
+                        </div>
+                    </div>
+                </Card>
+
+                <Card className="flex flex-col items-center justify-center min-h-[400px] bg-gray-50 relative">
+                    {gameState === 'intro' && (
+                        <div className="text-center">
+                            <Brain className="w-20 h-20 text-park-sage mx-auto mb-6" />
+                            <Button onClick={startTest} className="w-48 text-lg">
+                                <Play className="w-5 h-5 mr-2" /> Start Test
+                            </Button>
+                        </div>
+                    )}
+
+                    {gameState === 'test' && stimulus && (
+                        <div className="absolute top-4 right-4 text-gray-400 font-mono text-sm">
+                            Trial {completedTrials + 1} / {TOTAL_TRIALS}
+                        </div>
+                    )}
+
+                    {gameState === 'test' && stimulus && (
+                        <div className="animate-in fade-in zoom-in duration-200">
+                            <div
+                                className="text-7xl font-black mb-12 select-none tracking-wider"
+                                style={{ color: stimulus.color }}
+                            >
+                                {stimulus.word}
                             </div>
                         </div>
-                    </Card>
+                    )}
 
-                    <Card className="flex flex-col items-center justify-center min-h-[400px] bg-gray-50 relative">
-                        {gameState === 'intro' && (
-                            <div className="text-center">
-                                <Brain className="w-20 h-20 text-park-sage mx-auto mb-6" />
-                                <Button onClick={startTest} className="w-48 text-lg">
-                                    <Play className="w-5 h-5 mr-2" /> Start Test
-                                </Button>
+                    {/* Visual Feedback Overlay */}
+                    {feedback && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                            {feedback === 'Correct' ? (
+                                <CheckCircle className="w-24 h-24 text-green-500 animate-bounce" />
+                            ) : (
+                                <AlertTriangle className="w-24 h-24 text-red-500 animate-pulse" />
+                            )}
+                        </div>
+                    )}
+
+                    {gameState === 'results' && (
+                        <div className="text-center w-full animate-in slide-in-from-bottom">
+                            <h3 className="text-gray-500 uppercase tracking-widest text-sm font-bold mb-2">Interference Score</h3>
+                            <div className={`text-6xl font-bold mb-2 ${interferenceScore > 300 ? 'text-red-500' : 'text-park-sage'}`}>
+                                {Math.round(interferenceScore)} <span className="text-2xl text-gray-400">ms</span>
                             </div>
-                        )}
 
-                        {gameState === 'test' && stimulus && (
-                            <div className="absolute top-4 right-4 text-gray-400 font-mono text-sm">
-                                Trial {completedTrials + 1} / {TOTAL_TRIALS}
-                            </div>
-                        )}
+                            {isWizardMode && <p className="text-park-sage font-bold animate-pulse mt-4">Completing Full Assessment...</p>}
 
-                        {gameState === 'test' && stimulus && (
-                            <div className="animate-in fade-in zoom-in duration-200">
-                                <div
-                                    className="text-7xl font-black mb-12 select-none tracking-wider"
-                                    style={{ color: stimulus.color }}
-                                >
-                                    {stimulus.word}
-                                </div>
-                            </div>
-                        )}
+                            {!isWizardMode && (
+                                <>
+                                    <p className="text-gray-500 mb-6 text-sm">
+                                        (Difference between Conflict and Baseline)
+                                    </p>
 
-                        {/* Visual Feedback Overlay */}
-                        {feedback && (
-                            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
-                                {feedback === 'Correct' ? (
-                                    <CheckCircle className="w-24 h-24 text-green-500 animate-bounce" />
-                                ) : (
-                                    <AlertTriangle className="w-24 h-24 text-red-500 animate-pulse" />
-                                )}
-                            </div>
-                        )}
+                                    <div className="h-48 w-full mb-6">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={chartData} layout="vertical">
+                                                <XAxis type="number" hide />
+                                                <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12 }} />
+                                                <Tooltip cursor={{ fill: 'transparent' }} />
+                                                <Bar dataKey="time" radius={[0, 4, 4, 0]} barSize={40}>
+                                                    {chartData.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                                                    ))}
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
 
-                        {gameState === 'results' && (
-                            <div className="text-center w-full animate-in slide-in-from-bottom">
-                                <h3 className="text-gray-500 uppercase tracking-widest text-sm font-bold mb-2">Interference Score</h3>
-                                <div className={`text-6xl font-bold mb-2 ${interferenceScore > 300 ? 'text-red-500' : 'text-park-sage'}`}>
-                                    {Math.round(interferenceScore)} <span className="text-2xl text-gray-400">ms</span>
-                                </div>
-                                <p className="text-gray-500 mb-6 text-sm">
-                                    (Difference between Conflict and Baseline)
-                                </p>
-
-                                <div className="h-48 w-full mb-6">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={chartData} layout="vertical">
-                                            <XAxis type="number" hide />
-                                            <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12 }} />
-                                            <Tooltip cursor={{ fill: 'transparent' }} />
-                                            <Bar dataKey="time" radius={[0, 4, 4, 0]} barSize={40}>
-                                                {chartData.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                                                ))}
-                                            </Bar>
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-
-                                <Button onClick={() => setGameState('intro')} variant="outline">
-                                    <RotateCcw className="w-4 h-4 mr-2" /> Retry Test
-                                </Button>
-                            </div>
-                        )}
-                    </Card>
-                </div>
+                                    <Button onClick={() => setGameState('intro')} variant="outline">
+                                        <RotateCcw className="w-4 h-4 mr-2" /> Retry Test
+                                    </Button>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </Card>
             </div>
+        </div>
+    );
+
+    if (isWizardMode) return <Content />;
+
+    return (
+        <Layout>
+            <Content />
         </Layout>
     );
 };

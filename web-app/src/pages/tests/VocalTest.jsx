@@ -6,7 +6,7 @@ import AudioVisualizer from '../../components/common/AudioVisualizer';
 import useAudioAnalysis from '../../hooks/useAudioAnalysis';
 import { Mic, Activity, AlertCircle } from 'lucide-react';
 
-const VocalTest = () => {
+const VocalTest = ({ onComplete, isWizardMode = false }) => {
     const {
         isRecording,
         startRecording,
@@ -66,6 +66,9 @@ const VocalTest = () => {
                 const data = await res.json();
                 if (data.label) {
                     setAnalysisResult(data);
+                    if (isWizardMode && onComplete) {
+                        setTimeout(() => onComplete(data), 2000); // 2s delay to show success
+                    }
                 } else {
                     throw new Error("Invalid response from server");
                 }
@@ -78,89 +81,102 @@ const VocalTest = () => {
         }
     };
 
-    return (
-        <Layout>
-            <div className="max-w-4xl mx-auto space-y-8">
+    const Content = () => (
+        <div className="max-w-4xl mx-auto space-y-8">
+            {!isWizardMode && (
                 <div className="text-center mb-10">
                     <h1 className="text-4xl font-bold text-park-navy mb-4">Vocal Motor Test</h1>
                     <p className="text-xl text-gray-600 max-w-2xl mx-auto">
                         Take a deep breath and say <span className="font-bold text-park-sage">"Ahhhhh"</span> for as long and steadily as you can.
                     </p>
                 </div>
+            )}
 
-                <Card className="bg-white">
-                    <div className="mb-8">
-                        <AudioVisualizer analyser={analyser} isRecording={isRecording} />
-                    </div>
+            <Card className="bg-white">
+                <div className="mb-8">
+                    <AudioVisualizer analyser={analyser} isRecording={isRecording} />
+                </div>
 
-                    <div className="flex flex-col items-center justify-center mb-8 space-y-4">
-                        {isRecording ? (
-                            <div className="w-full max-w-md space-y-2 text-center">
-                                <div className="text-2xl font-bold text-park-navy animate-pulse">
-                                    Recording... {(5 - duration).toFixed(1)}s
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                                    <div
-                                        className="bg-park-sage h-2.5 rounded-full transition-all duration-100 ease-linear"
-                                        style={{ width: `${(duration / 5) * 100}%` }}
-                                    ></div>
-                                </div>
-                                <p className="text-sm text-gray-500">Keep saying "Ahhhhh"...</p>
+                <div className="flex flex-col items-center justify-center mb-8 space-y-4">
+                    {isRecording ? (
+                        <div className="w-full max-w-md space-y-2 text-center">
+                            <div className="text-2xl font-bold text-park-navy animate-pulse">
+                                Recording... {(5 - duration).toFixed(1)}s
                             </div>
-                        ) : (analysisResult || error) ? (
-                            <div className="text-center animate-in fade-in zoom-in duration-300">
-                                <h3 className="text-2xl font-bold text-park-navy mb-2">Analysis Complete</h3>
+                            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                <div
+                                    className="bg-park-sage h-2.5 rounded-full transition-all duration-100 ease-linear"
+                                    style={{ width: `${(duration / 5) * 100}%` }}
+                                ></div>
+                            </div>
+                            <p className="text-sm text-gray-500">Keep saying "Ahhhhh"...</p>
+                        </div>
+                    ) : (analysisResult || error) ? (
+                        <div className="text-center animate-in fade-in zoom-in duration-300">
+                            <h3 className="text-2xl font-bold text-park-navy mb-2">Analysis Complete</h3>
 
-                                {error ? (
-                                    <div className="text-red-500 font-bold mb-4 bg-red-50 p-4 rounded-lg border border-red-200">
-                                        Analysis Failed: {error}
-                                    </div>
-                                ) : (
-                                    <div className={`text-xl font-bold ${analysisResult?.label === 'Healthy' ? 'text-green-600' : 'text-red-500'}`}>
-                                        Result: {analysisResult?.label} ({analysisResult?.confidence}%)
-                                    </div>
-                                )}
+                            {error ? (
+                                <div className="text-red-500 font-bold mb-4 bg-red-50 p-4 rounded-lg border border-red-200">
+                                    Analysis Failed: {error}
+                                </div>
+                            ) : (
+                                <div className={`text-xl font-bold ${analysisResult?.label === 'Healthy' ? 'text-green-600' : 'text-red-500'}`}>
+                                    Result: {analysisResult?.label} ({analysisResult?.confidence}%)
+                                </div>
+                            )}
 
+                            {!isWizardMode && (
                                 <Button onClick={() => { setAnalysisResult(null); setError(null); startRecording(); }} className="mt-4" variant="secondary">
                                     Retake Test
                                 </Button>
-                            </div>
-                        ) : (
-                            <Button onClick={() => { setAnalysisResult(null); setError(null); startRecording(); }} className="w-64">
-                                <Mic className="w-6 h-6 mr-2" />
-                                Start 5s Test
-                            </Button>
-                        )}
-                    </div>
-                </Card>
+                            )}
+                            {isWizardMode && !error && (
+                                <p className="text-park-sage mt-2">Proceeding to next step...</p>
+                            )}
+                        </div>
+                    ) : (
+                        <Button onClick={() => { setAnalysisResult(null); setError(null); startRecording(); }} className="w-64">
+                            <Mic className="w-6 h-6 mr-2" />
+                            Start 5s Test
+                        </Button>
+                    )}
+                </div>
+            </Card>
 
-                {/* Only show results if available */}
-                {analysisResult && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <ResultCard
-                            title="Jitter (Pitch Shake)"
-                            value={`${Number(analysisResult.features.jitter).toFixed(1)}%`}
-                            icon={AlertCircle}
-                            statusColor={analysisResult.features.jitter < 1.04 ? 'text-green-600' : 'text-red-500'}
-                            description="Cycle-to-cycle variation in pitch."
-                        />
-                        <ResultCard
-                            title="Shimmer (Vol Shake)"
-                            value={`${Number(analysisResult.features.shimmer).toFixed(1)}%`}
-                            icon={Activity}
-                            statusColor={analysisResult.features.shimmer < 3.81 ? 'text-green-600' : 'text-red-500'}
-                            description="Cycle-to-cycle variation in loudness."
-                        />
-                        <ResultCard
-                            title="HNR (Breathiness)"
-                            value={`${Number(analysisResult.features.hnr).toFixed(1)} dB`}
-                            icon={Activity}
-                            statusColor={analysisResult.features.hnr > 20 ? 'text-green-600' : 'text-red-500'}
-                            description="Harmonics-to-Noise Ratio."
-                        />
-                    </div>
-                )}
-            </div >
+            {/* Only show results if available */}
+            {analysisResult && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <ResultCard
+                        title="Jitter (Pitch Shake)"
+                        value={`${Number(analysisResult.features.jitter).toFixed(1)}%`}
+                        icon={AlertCircle}
+                        statusColor={analysisResult.features.jitter < 1.04 ? 'text-green-600' : 'text-red-500'}
+                        description="Cycle-to-cycle variation in pitch."
+                    />
+                    <ResultCard
+                        title="Shimmer (Vol Shake)"
+                        value={`${Number(analysisResult.features.shimmer).toFixed(1)}%`}
+                        icon={Activity}
+                        statusColor={analysisResult.features.shimmer < 3.81 ? 'text-green-600' : 'text-red-500'}
+                        description="Cycle-to-cycle variation in loudness."
+                    />
+                    <ResultCard
+                        title="HNR (Breathiness)"
+                        value={`${Number(analysisResult.features.hnr).toFixed(1)} dB`}
+                        icon={Activity}
+                        statusColor={analysisResult.features.hnr > 20 ? 'text-green-600' : 'text-red-500'}
+                        description="Harmonics-to-Noise Ratio."
+                    />
+                </div>
+            )}
+        </div >
+    );
+
+    if (isWizardMode) return <Content />;
+
+    return (
+        <Layout>
+            <Content />
         </Layout >
     );
 };
